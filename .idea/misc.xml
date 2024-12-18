@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Remote Python 3.11.2 (sftp://luke@raspberrypi4:22/home/luke/.virtualenvs/SmartHomeSystem/bin/python)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="AI_Smart_Home" project-jdk-type="Python SDK" />
+</project>

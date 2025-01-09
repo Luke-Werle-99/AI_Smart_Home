@@ -5,28 +5,34 @@ import threading
 from gtts import gTTS
 import pygame
 import os
+from dotenv import load_dotenv
 import subprocess
 import warnings
 import sys
 import traceback
-from Modules import music_player
+from Modules import music_player, diary
 import sounddevice
 
 # Redirect stderr to suppress ALSA and JACK errors
-sys.stderr = open(os.devnull, 'w')
-
-import speech_recognition as sr
-
+#sys.stderr = open(os.devnull, 'w')
+#warnings.filterwarnings("ignore")  # Suppress other warnings
 
 # Suppress ALSA and PulseAudio warnings
 os.environ["SDL_AUDIODRIVER"] = "pulse"  # Use ALSA driver explicitly
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"  # Suppress pygame startup message
 os.environ["ALSA_LOG_LEVEL"] = "none"  # Suppress ALSA messages
-warnings.filterwarnings("ignore")  # Suppress other warnings
 
+#Load the environment variables from the .env file
+load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")
+# Debugging: Print the API key to verify
+if api_key:
+    print("API Key loaded successfully!")
+else:
+    print("Error: API Key not loaded!")
 #Setting API-Key
 client = OpenAI(
-    api_key="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"
+    api_key=api_key
 )
 
 # Wake word
@@ -64,18 +70,18 @@ def speak(text):
 # Function to listen to user input
 def listen():
     recognizer = sr.Recognizer()
-    with sr.Microphone(device_index=1) as source:
-        print("Listening...")
-        audio = recognizer.listen(source)
     try:
-        command = recognizer.recognize_google(audio)
-        print(f"You said: {command}")
-        return command.lower()
+        with sr.Microphone(device_index=1) as source:
+            print("Listening...")
+            with recognizer.listen(source) as audio:
+                command = recognizer.recognize_google(audio, language="en-US")
+                print(f"You said: {command}")
+                return command.lower()
     except sr.UnknownValueError:
-        return ""
+            return ""
     except sr.RequestError:
-        speak("Sorry, I couldn't connect to the speech service.")
-        return ""
+            speak("Sorry, I couldn't connect to the speech service.")
+            return ""
 
 # Function to detect wake word
 def detect_command(input, keyword):
@@ -104,8 +110,9 @@ def ask_openai(prompt):
     except Exception:
         traceback.print_exc()
 
+
 def handle_voice_command(user_input):
-    #Handle a voice command by routing it to the appropriate module.
+    # Handle a voice command by routing it to the appropriate module.
     if detect_command(user_input, "play music"):
         print("Music command detected. Opening music_player module...")
         song_query = user_input.replace("play music", "").strip()
@@ -113,10 +120,20 @@ def handle_voice_command(user_input):
             music_player.play_song(song_query)
         else:
             speak("Please specify the song you'd like to play.")
+
     elif detect_command(user_input, "calendar"):
         print("Opening Calendar module...")
-        #calendar_module.create_entry(command)  # Example function in calendar_module
-    else: # prompting ChatGPT
+        # calendar_module.create_entry(command)  # Example function in calendar_module
+
+    elif detect_command(user_input, "diary entry"):
+        print("Diary entry command detected. Starting a new diary entry...")
+        diary.create_entry()
+
+    elif detect_command(user_input, "read diary"):
+        print("Read diary entry command detected. Fetching the diary entry...")
+        diary.read_or_play_entry()
+
+    else:  # Default: Send query to OpenAI
         response = ask_openai(user_input)
         speak(response)
 
@@ -127,7 +144,7 @@ def voice_assistant():
         wake_up = listen()
         if detect_command(wake_up, WAKE_WORD):
             print("Wake word detected")
-            speak("Yes, how can I help you?")
+            speak("How can I help you?")
             user_input = listen()
             if user_input:
                 handle_voice_command(user_input)

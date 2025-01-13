@@ -1,7 +1,7 @@
 import time, subprocess, wave, os, re
 import speech_recognition as sr
 from openai import OpenAI
-import threading
+import multiprocessing
 from gtts import gTTS
 import pygame
 import os
@@ -30,13 +30,22 @@ if api_key:
     print("API Key loaded successfully!")
 else:
     print("Error: API Key not loaded!")
+
 #Setting API-Key
 client = OpenAI(
     api_key=api_key
 )
+#initializing thread dictionary
+process_dict = {}
 
 # Wake word
 WAKE_WORD = "assistant"
+
+stoppable_processes = {
+    "play_music",
+    "read_entry",
+}
+stop_flag = multiprocessing.Value("b", False)
 
 #Optimize the speech_recognition Library Settings
 #sr.energy_threshold = 50  # Default is around 300; increase for noisy environments
@@ -52,6 +61,7 @@ def speak(text):
     print(f"Assistant: {text}")
     tts = gTTS(text=text, lang="en")
     audio_file = "output.mp3"
+
     tts.save(audio_file)
 
     #subprocess.run(['mpv', '--no-video', audio_file])
@@ -64,28 +74,35 @@ def speak(text):
     while pygame.mixer.music.get_busy():
         time.sleep(0.1)
 
-    # Clean up the temporary file
-    os.remove(audio_file)
+    #Clean up the temporary file
+    if os.path.exists(audio_file):
+             os.remove(audio_file)
 
 # Function to listen to user input
 def listen():
     recognizer = sr.Recognizer()
     try:
-        with sr.Microphone(device_index=1) as source:
+        mic = sr.Microphone()
+        with mic as source:
             print("Listening...")
-            with recognizer.listen(source) as audio:
-                command = recognizer.recognize_google(audio, language="en-US")
-                print(f"You said: {command}")
-                return command.lower()
+            audio = recognizer.listen(source)
+            command = recognizer.recognize_google(audio)
+            print(f"You said: {command}")
+        return command.lower()
     except sr.UnknownValueError:
-            return ""
+            return "UnknownValueError"
     except sr.RequestError:
             speak("Sorry, I couldn't connect to the speech service.")
             return ""
 
 # Function to detect wake word
-def detect_command(input, keyword):
-    return re.search(rf"\b{keyword}\b", input)
+#def detect_command(input, keyword):
+#    return re.search(rf"\b{keyword}\b", input)
+
+def detect_command(input_text, keyword):
+    if keyword in input_text:
+        return True, input_text[input_text.find(keyword)+len(keyword):]
+    return False, None
 
 # Function to handle OpenAI GPT query
 def ask_openai(prompt):
@@ -110,46 +127,95 @@ def ask_openai(prompt):
     except Exception:
         traceback.print_exc()
 
+def stop_processes(process_names):
+    # Also stop the mpv process explicitly
+    stop_flag.value = True
+    for process_name in process_names:
+        existing_process = process_dict.get(process_name)
+        if existing_process and existing_process.is_alive():
+            print(f"Stopping process: {process_name}")
+            existing_process.terminate()
+            existing_process.join()
+        else:
+            print(f"No active process found for: {process_name}")
+
 
 def handle_voice_command(user_input):
     # Handle a voice command by routing it to the appropriate module.
-    if detect_command(user_input, "play music"):
+    play_music_bool, play_music_song = detect_command(user_input, "play music")
+    if play_music_bool:
         print("Music command detected. Opening music_player module...")
-        song_query = user_input.replace("play music", "").strip()
-        if song_query:
-            music_player.play_song(song_query)
+        if play_music_song:
+            # Check if there's an existing stoppable process
+            stop_processes(stoppable_processes)
+
+            # Start a new process for playing the song
+            new_process = multiprocessing.Process(
+                target=music_player.play_song,
+                args=(play_music_song, stop_flag)
+            )
+            process_dict['play_music'] = new_process
+            new_process.start()
         else:
             speak("Please specify the song you'd like to play.")
+        return
 
-    elif detect_command(user_input, "calendar"):
+    calender_bool, calender_command = detect_command(user_input, "calendar")
+    if calender_bool:
         print("Opening Calendar module...")
         # calendar_module.create_entry(command)  # Example function in calendar_module
+        return
 
-    elif detect_command(user_input, "diary entry"):
+    diary_entry_bool, diary_command = detect_command(user_input, "diary")
+    if diary_entry_bool:
         print("Diary entry command detected. Starting a new diary entry...")
-        diary.create_entry()
+        stop_processes(stoppable_processes)
 
-    elif detect_command(user_input, "read diary"):
+        # Start a new process for playing the song
+        new_process = multiprocessing.Process(
+            target=diary.create_entry
+        )
+        process_dict['diary_create_entry'] = new_process
+        new_process.start()
+        return
+
+    read_diary_bool, read_diary_command = detect_command(user_input, "read diary")
+    if read_diary_bool:
         print("Read diary entry command detected. Fetching the diary entry...")
-        diary.read_or_play_entry()
+        stop_processes(stoppable_processes)
 
-    else:  # Default: Send query to OpenAI
-        response = ask_openai(user_input)
-        speak(response)
+        # Start a new process for playing the song
+        new_process = multiprocessing.Process(
+            target=diary.read_entry
+        )
+        process_dict['diary_read_entry'] = new_process
+        new_process.start()
+        return
+
+    stop_bool, stop_command = detect_command(user_input, "stop")
+    if stop_bool:
+        print("Stopping process...")
+        stop_processes(stoppable_processes)
+        return
+
+    # Default: Send query to OpenAI
+    response = ask_openai(user_input)
+    speak(response)
 
 # Main function
 def voice_assistant():
+    print(__name__)
     speak(f"Hello Luke. I am your voice assistant. Say {WAKE_WORD} to wake me up.")
     while True:
-        wake_up = listen()
-        if detect_command(wake_up, WAKE_WORD):
-            print("Wake word detected")
-            speak("How can I help you?")
-            user_input = listen()
-            if user_input:
-                handle_voice_command(user_input)
+        audio_input = listen()
+        detected, command = detect_command(audio_input, WAKE_WORD)
+        if detected:
+            if not command:
+                print("Wake word detected")
+                speak("How can I help you?")
+                command = listen()
+            handle_voice_command(command)
         time.sleep(1)
 
-# Start the assistant in a separate thread
-assistant_thread = threading.Thread(target=voice_assistant)
-assistant_thread.start()
+if __name__ == '__main__':
+    voice_assistant()

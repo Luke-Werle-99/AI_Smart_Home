@@ -1,7 +1,9 @@
 import os
 import datetime
 import wave
-from speech_recognition import Recognizer, AudioFile, UnknownValueError
+import time
+import pygame
+from speech_recognition import Recognizer, AudioFile, UnknownValueError, Microphone
 from main import speak, listen
 from dateutil import parser
 
@@ -17,29 +19,28 @@ def record_audio(filename):
     speak("You can now start recording your diary entry. Say 'entry end' when you are done.")
 
     audio_data = []
-    with sr.Microphone(device_index=1) as source:  # Ensure device_index matches your setup
+    with Microphone() as source:  # Adjust `device_index` if needed
         recognizer.adjust_for_ambient_noise(source)
         print("Recording started...")
         while True:
-            audio = recognizer.listen(source)
             try:
+                audio = recognizer.listen(source)
                 command = recognizer.recognize_google(audio, language="en-US").lower()
                 if "entry end" in command:
                     speak("Recording stopped")
                     print("Recording stopped")
                     break
                 else:
-                    audio_data.append(audio)
+                    audio_data.append(audio.frame_data)
             except UnknownValueError:
                 pass
 
     # Save audio
     with wave.open(filename, "wb") as wav_file:
         wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
+        wav_file.setsampwidth(2)  # Assuming 16-bit PCM
         wav_file.setframerate(44100)
-        for data in audio_data:
-            wav_file.writeframes(data.frame_data)
+        wav_file.writeframes(b"".join(audio_data))
 
 # Function to create a diary entry
 def create_entry():
@@ -52,12 +53,12 @@ def create_entry():
 
     # Convert audio to text
     recognizer = Recognizer()
-    with AudioFile(audio_file) as source:
-        audio = recognizer.record(source)
-        try:
+    try:
+        with AudioFile(audio_file) as source:
+            audio = recognizer.record(source)
             text = recognizer.recognize_google(audio, language="en-US")
-        except UnknownValueError:
-            text = "No speech recognized."
+    except UnknownValueError:
+        text = "No speech recognized."
 
     # Save text
     with open(text_file, "w", encoding="utf-8") as file:
@@ -66,7 +67,7 @@ def create_entry():
     speak(f"Your entry has been saved under today's date: {today}.")
 
 # Function to read or play a diary entry
-def read_or_play_entry():
+def read_entry():
     speak("Please state the date of the entry, for example, 'December 17th, 2023' or '17th December 2023'.")
     date_spoken = listen()
 
@@ -90,12 +91,13 @@ def read_or_play_entry():
         speak("Should I read the entry as text or play the audio recording?")
         choice = listen()
 
-        if "text" in choice:
+        if "text" in choice.lower():
             with open(text_file, "r", encoding="utf-8") as file:
                 text = file.read()
             speak("Here is your entry:")
             speak(text)
-        elif "audio" in choice:
+        elif "audio" in choice.lower():
+            pygame.mixer.init()
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():
@@ -104,3 +106,4 @@ def read_or_play_entry():
             speak("I didn't understand your choice.")
     else:
         speak("There is no entry for that date.")
+

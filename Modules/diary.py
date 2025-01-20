@@ -43,7 +43,7 @@ def record_audio(filename):
         wav_file.writeframes(b"".join(audio_data))
 
 # Function to create a diary entry
-def create_entry():
+def create_entry(speak):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     audio_file = os.path.join(DIARY_FOLDER, f"{today}.wav")
     text_file = os.path.join(DIARY_FOLDER, f"{today}.txt")
@@ -67,7 +67,7 @@ def create_entry():
     speak(f"Your entry has been saved under today's date: {today}.")
 
 # Function to read or play a diary entry
-def read_entry():
+def read_entry(speak):
     speak("Please state the date of the entry, for example, 'December 17th, 2023' or '17th December 2023'.")
     date_spoken = listen()
 

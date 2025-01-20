@@ -10,7 +10,7 @@ import subprocess
 import warnings
 import sys
 import traceback
-from Modules import music_player, diary
+from Modules import music_player, diary, hygrometer
 import sounddevice
 
 # Redirect stderr to suppress ALSA and JACK errors
@@ -43,7 +43,11 @@ WAKE_WORD = "assistant"
 
 stoppable_processes = {
     "play_music",
-    "read_entry",
+    "diary_read_entry",
+    "diary_create_entry",
+    "hygrometer_read_humidity",
+    "hygrometer_read_temperature",
+
 }
 stop_flag = multiprocessing.Value("b", False)
 
@@ -137,7 +141,8 @@ def stop_processes(process_names):
             existing_process.terminate()
             existing_process.join()
         else:
-            print(f"No active process found for: {process_name}")
+            pass
+            #print(f"No active process found for: {process_name}")
 
 
 def handle_voice_command(user_input):
@@ -149,7 +154,6 @@ def handle_voice_command(user_input):
             # Check if there's an existing stoppable process
             stop_processes(stoppable_processes)
 
-            # Start a new process for playing the song
             new_process = multiprocessing.Process(
                 target=music_player.play_song,
                 args=(play_music_song, stop_flag)
@@ -171,9 +175,8 @@ def handle_voice_command(user_input):
         print("Diary entry command detected. Starting a new diary entry...")
         stop_processes(stoppable_processes)
 
-        # Start a new process for playing the song
         new_process = multiprocessing.Process(
-            target=diary.create_entry
+            target=diary.create_entry(speak)
         )
         process_dict['diary_create_entry'] = new_process
         new_process.start()
@@ -184,11 +187,34 @@ def handle_voice_command(user_input):
         print("Read diary entry command detected. Fetching the diary entry...")
         stop_processes(stoppable_processes)
 
-        # Start a new process for playing the song
         new_process = multiprocessing.Process(
-            target=diary.read_entry
+            target=diary.read_entry(speak)
         )
         process_dict['diary_read_entry'] = new_process
+        new_process.start()
+        return
+
+    read_temperature, read_temperature_command = detect_command(user_input, "temperature")
+    if read_temperature:
+        print("Read temperature command detected. Fetching temperature...")
+        stop_processes(stoppable_processes)
+
+        new_process = multiprocessing.Process(
+            target=hygrometer.read_temperature(speak)
+        )
+        process_dict['hygrometer_read_temperature'] = new_process
+        new_process.start()
+        return
+
+    read_humidity, read_humidity_command = detect_command(user_input, "humidity")
+    if read_humidity:
+        print("Read humidity command detected. Fetching the humidity...")
+        stop_processes(stoppable_processes)
+
+        new_process = multiprocessing.Process(
+            target=hygrometer.read_humidity(speak)
+        )
+        process_dict['hygrometer_read_humidity'] = new_process
         new_process.start()
         return
 

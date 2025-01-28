@@ -1,4 +1,4 @@
-import time, subprocess, wave, os, re
+import time, subprocess, wave, os, re, sounddevice, warnings
 import speech_recognition as sr
 from openai import OpenAI
 import multiprocessing
@@ -6,12 +6,8 @@ from gtts import gTTS
 import pygame
 import os
 from dotenv import load_dotenv
-import subprocess
-import warnings
-import sys
 import traceback
-from Modules import music_player, diary, hygrometer
-import sounddevice
+from Modules import music_player, diary, hygrometer, alarm_clock
 
 # Redirect stderr to suppress ALSA and JACK errors
 #sys.stderr = open(os.devnull, 'w')
@@ -94,14 +90,11 @@ def listen():
             print(f"You said: {command}")
         return command.lower()
     except sr.UnknownValueError:
-            return "UnknownValueError"
-    except sr.RequestError:
-            speak("Sorry, I couldn't connect to the speech service.")
+            print("UnknownValueError")
             return ""
-
-# Function to detect wake word
-#def detect_command(input, keyword):
-#    return re.search(rf"\b{keyword}\b", input)
+    except sr.RequestError:
+            speak("Could not connect to the speech service")
+            return ""
 
 def detect_command(input_text, keyword):
     if keyword in input_text:
@@ -132,7 +125,6 @@ def ask_openai(prompt):
         traceback.print_exc()
 
 def stop_processes(process_names):
-    # Also stop the mpv process explicitly
     stop_flag.value = True
     for process_name in process_names:
         existing_process = process_dict.get(process_name)
@@ -144,30 +136,22 @@ def stop_processes(process_names):
             pass
             #print(f"No active process found for: {process_name}")
 
-
 def handle_voice_command(user_input):
-    # Handle a voice command by routing it to the appropriate module.
-    play_music_bool, play_music_song = detect_command(user_input, "play music")
+    # Handle voice commands by routing it to the appropriate module.
+    play_music_bool, song_name = detect_command(user_input, "play music")
     if play_music_bool:
         print("Music command detected. Opening music_player module...")
-        if play_music_song:
-            # Check if there's an existing stoppable process
+        if song_name:
             stop_processes(stoppable_processes)
 
             new_process = multiprocessing.Process(
                 target=music_player.play_song,
-                args=(play_music_song, stop_flag)
+                args=(song_name, stop_flag)
             )
             process_dict['play_music'] = new_process
             new_process.start()
         else:
             speak("Please specify the song you'd like to play.")
-        return
-
-    calender_bool, calender_command = detect_command(user_input, "calendar")
-    if calender_bool:
-        print("Opening Calendar module...")
-        # calendar_module.create_entry(command)  # Example function in calendar_module
         return
 
     diary_entry_bool, diary_command = detect_command(user_input, "diary")
@@ -194,8 +178,8 @@ def handle_voice_command(user_input):
         new_process.start()
         return
 
-    read_temperature, read_temperature_command = detect_command(user_input, "temperature")
-    if read_temperature:
+    read_temperature_bool, read_temperature_command = detect_command(user_input, "temperature")
+    if read_temperature_bool:
         print("Read temperature command detected. Fetching temperature...")
         stop_processes(stoppable_processes)
 
@@ -206,8 +190,8 @@ def handle_voice_command(user_input):
         new_process.start()
         return
 
-    read_humidity, read_humidity_command = detect_command(user_input, "humidity")
-    if read_humidity:
+    read_humidity_bool, read_humidity_command = detect_command(user_input, "humidity")
+    if read_humidity_bool:
         print("Read humidity command detected. Fetching the humidity...")
         stop_processes(stoppable_processes)
 
@@ -216,6 +200,39 @@ def handle_voice_command(user_input):
         )
         process_dict['hygrometer_read_humidity'] = new_process
         new_process.start()
+        return
+
+    set_alarm_bool, set_alarm_command = detect_command(user_input, "set alarm")
+    if set_alarm_bool:
+        if set_alarm_command:
+            print("Setting Up Alarm...")
+            stop_processes(stoppable_processes)
+            try:
+                details = set_alarm_command.split(",")
+                name = details[0].strip()
+                alarm_time = details[1].strip()
+                frequency = details[2].strip()
+
+                new_process = multiprocessing.Process(
+                    target=alarm_clock.set_alarm(name, alarm_time, frequency, speak)
+                )
+                process_dict['set_alarm'] = new_process
+                new_process.start()
+        speak("Please provide the alarm name, time, and frequency in the format: 'name, HH:MM, frequency'.")
+        return
+
+    delete_alarm_bool, delete_alarm_command = detect_command(user_input, "delete alarm")
+    if delete_alarm_bool:
+        print("Deleting Alarm...")
+        stop_processes(stoppable_processes)
+        alarm_name = delete_alarm_command.strip()
+
+        new_process = multiprocessing.Process(
+            target=alarm_clock.delete_alarm(alarm_name, speak)
+        )
+        process_dict['delete_alarm'] = new_process
+        new_process.start()
+
         return
 
     stop_bool, stop_command = detect_command(user_input, "stop")
@@ -230,7 +247,6 @@ def handle_voice_command(user_input):
 
 # Main function
 def voice_assistant():
-    print(__name__)
     speak(f"Hello Luke. I am your voice assistant. Say {WAKE_WORD} to wake me up.")
     while True:
         audio_input = listen()
@@ -241,7 +257,6 @@ def voice_assistant():
                 speak("How can I help you?")
                 command = listen()
             handle_voice_command(command)
-        time.sleep(1)
 
 if __name__ == '__main__':
     voice_assistant()

@@ -1,7 +1,7 @@
-# AI Smart Home Assistant
+# AI Smart Home 
 
 ## Description
-The **AI Smart Home Assistant** is a Python-based voice assistant designed to automate and simplify daily tasks. It integrates with various modules such as music playback, calendar management, and a diary functionality. This project is designed to run on a Raspberry Pi 4B, using a Razer Seiren Mini microphone and Bluetooth-connected speakers. The assistant is built to recognize voice commands, perform tasks, and provide audio feedback.
+The **AI Smart Home ** is a Python-based Smart Home System designed to offer an open source alternative to existing solutions which respects users privacy and offers an innovative GPT4o powered voice assistant. It integrates with various modules such as music playback, connecting to humidity and temperature sensors, and alarm, a diary functionality and many more. This project is designed to run on a Raspberry Pi 4B, using a Razer Seiren Mini microphone and a Soundcore Boom 2 Bluetooth speakers, but can easily be adapted to work with a variety of hardwar options. The assistant is built to recognize voice commands to control IoT devices and perform tasks, and provide AI powered voice assistance.
 
 ## Features
 
@@ -34,7 +34,7 @@ The **AI Smart Home Assistant** is a Python-based voice assistant designed to au
 - **Hardware**:
   - Raspberry Pi 4B
   - Razer Seiren Mini microphone
-  - Bluetooth-connected speakers
+  - Souncdore Boom 2 Bluetooth speakers
 
 ## Installation
 
@@ -56,21 +56,13 @@ The **AI Smart Home Assistant** is a Python-based voice assistant designed to au
    ```
 3. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   cd installation
+   sh install_dependencies.sh
+   sh install_libraries.sh
    ```
-4. Ensure required directories exist:
+5. Set up your OpenAI API key by placing it in `.env`:
    ```bash
-   mkdir Tagebuch
-   ```
-5. Set up your OpenAI API key by replacing the placeholder in `main.py`:
-   ```python
-   client = OpenAI(
-       api_key="your_openai_api_key"
-   )
-   ```
-6. Ensure `yt-dlp`, `mpv`, and `pavucontrol` are installed:
-   ```bash
-   sudo apt install yt-dlp mpv pavucontrol
+   sudo nano .env
    ```
 
 ### Running the Assistant
@@ -110,17 +102,29 @@ To run the assistant on system startup:
    sudo systemctl enable autostart.service
    sudo systemctl start autostart.service
    ```
+4. Additinally you can set up automatic bluetooth pairing in case you are using a bluetooth speaker like this:
+    ```bash
+        echo "Connecting to Bluetooth speaker..."
+        for i in {1..5}; do
+        echo "Attempt $i: Connecting to F4:2B:7D:29:50:41..."
+        bluetoothctl -- connect F4:2B:7D:29:50:41 && break
+        sleep 5
+        done
+    ```
 
 ## File Structure
 ```
 ai-smart-home/
 ├── main.py
 ├── Modules/
+│   ├── __innit__.py
 │   ├── music_player.py
 │   ├── diary.py
-├── Tagebuch/
+│   ├── hygrometer.py
+├── diary_entries/
 │   ├── 2023-12-17.txt
 │   ├── 2023-12-17.wav
+├── .env
 └── README.md
 ```
 
@@ -129,15 +133,17 @@ ai-smart-home/
 ### Available Commands
 - **"Assistant"**: Activates the assistant.
 - **"Play music [song name]"**: Plays music from YouTube.
-- **"Tagebuch Eintrag"**: Starts a new diary entry.
-- **"Tagebuch Lesen"**: Reads or plays a diary entry.
+- **"diary"**: Starts a new diary entry.
+- **"read diary"**: Reads or plays a diary entry.
+- **"current temperature"**: Requests sensors and outputs the current temperature.
+- **"current humidity"**: Requests sensors and outputs the current relative humidity.
 
 ### Example Interaction
 1. Say "Assistant" to wake up the system.
 2. Use commands like:
    - "Play music Believer by Imagine Dragons."
-   - "Tagebuch Eintrag."
-   - "Tagebuch Lesen."
+     
+You also wake the system and input your command in one sentence like: "Assistant Play music Believer by Imagine Dragons"
 
 ## Troubleshooting
 
@@ -145,16 +151,6 @@ ai-smart-home/
 1. **Microphone Not Detected**:
    - Ensure the correct device index or name is set in `listen()`.
    - Run `arecord -l` to verify available devices.
-
-2. **ALSA Errors**:
-   - Ensure `pulseaudio` is running:
-     ```bash
-     pulseaudio --start
-     ```
-   - Add the user to the `audio` group:
-     ```bash
-     sudo usermod -aG audio your-username
-     ```
 
 3. **Bluetooth Speaker Issues**:
    - Ensure the speaker is paired and set as the default audio sink using:

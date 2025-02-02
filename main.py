@@ -1,4 +1,4 @@
-import time, subprocess, wave, os, re, sounddevice, warnings
+import time, subprocess, wave, os, re, sounddevice, warnings, threading
 import speech_recognition as sr
 from openai import OpenAI
 import multiprocessing
@@ -43,6 +43,7 @@ stoppable_processes = {
     "diary_create_entry",
     "hygrometer_read_humidity",
     "hygrometer_read_temperature",
+    "ask_openai",
 
 }
 stop_flag = multiprocessing.Value("b", False)
@@ -61,7 +62,6 @@ def speak(text):
     print(f"Assistant: {text}")
     tts = gTTS(text=text, lang="en")
     audio_file = "output.mp3"
-
     tts.save(audio_file)
 
     #subprocess.run(['mpv', '--no-video', audio_file])
@@ -70,13 +70,22 @@ def speak(text):
     pygame.mixer.music.load(audio_file)
     pygame.mixer.music.play()
 
-    #Wait for playback to finish
+    # Wait for playback to finish, but check for stop flag periodically
     while pygame.mixer.music.get_busy():
+        # Check if the global stop flag is set
+        if stop_flag.value:
+            print("Stop flag detected. Stopping playback.")
+            pygame.mixer.music.stop()
+            stop_flag.value = False  # Reset for future playback
+            break
         time.sleep(0.1)
 
     #Clean up the temporary file
     if os.path.exists(audio_file):
              os.remove(audio_file)
+
+def speak_async(text):
+    threading.Thread(target=speak, args=(text,), daemon=True).start()
 
 # Function to listen to user input
 def listen():
@@ -90,7 +99,7 @@ def listen():
             print(f"You said: {command}")
         return command.lower()
     except sr.UnknownValueError:
-            print("UnknownValueError")
+            print("No Input Detected")
             return ""
     except sr.RequestError:
             speak("Could not connect to the speech service")
@@ -104,37 +113,43 @@ def detect_command(input_text, keyword):
 # Function to handle OpenAI GPT query
 def ask_openai(prompt):
     print("Asking OpenAI...")
-    # Using the new API structure with valid model name
+
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",  # Use "gpt-4" or "gpt-3.5-turbo"
+            model="gpt-4o",  # Use "gpt-4" or "gpt-3.5-turbo"
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt},
             ],
             )
+
+        #print(f"FULL API Response: {completion}")
+        response = completion.choices[0].message.content.strip()
         #print response to console
+        print("Response from OpenAI:", response)
 
-        print(f"FULL API Response: {completion}")
-        print('***')
-        print(completion.choices[0].message.content)
-
-            # Extract and return the AI's response
-        return completion.choices[0].message.content.strip()
+        return response
     except Exception:
         traceback.print_exc()
+        return "Error when asking OpenAI."
+
+
+# This function used to mitigate having to call speak in the subprocess
+def ask_openai_worker(prompt, output_queue):
+    response = ask_openai(prompt)
+    output_queue.put(response)
 
 def stop_processes(process_names):
-    stop_flag.value = True
+    stop_flag.value = True  # Signal all tasks (including audio) to stop
     for process_name in process_names:
         existing_process = process_dict.get(process_name)
         if existing_process and existing_process.is_alive():
             print(f"Stopping process: {process_name}")
             existing_process.terminate()
             existing_process.join()
-        else:
-            pass
-            #print(f"No active process found for: {process_name}")
+    # Only reset the flag if no audio is playing.
+    if not pygame.mixer.music.get_busy():
+        stop_flag.value = False
 
 def handle_voice_command(user_input):
     # Handle voice commands by routing it to the appropriate module.
@@ -160,7 +175,8 @@ def handle_voice_command(user_input):
         stop_processes(stoppable_processes)
 
         new_process = multiprocessing.Process(
-            target=diary.create_entry(speak)
+            target=diary.create_entry,
+            args=(speak,)
         )
         process_dict['diary_create_entry'] = new_process
         new_process.start()
@@ -172,7 +188,8 @@ def handle_voice_command(user_input):
         stop_processes(stoppable_processes)
 
         new_process = multiprocessing.Process(
-            target=diary.read_entry(speak)
+            target=diary.read_entry,
+            args=(speak,)
         )
         process_dict['diary_read_entry'] = new_process
         new_process.start()
@@ -184,7 +201,8 @@ def handle_voice_command(user_input):
         stop_processes(stoppable_processes)
 
         new_process = multiprocessing.Process(
-            target=hygrometer.read_temperature(speak)
+            target=hygrometer.read_temperature,
+            args=(speak,)
         )
         process_dict['hygrometer_read_temperature'] = new_process
         new_process.start()
@@ -196,7 +214,8 @@ def handle_voice_command(user_input):
         stop_processes(stoppable_processes)
 
         new_process = multiprocessing.Process(
-            target=hygrometer.read_humidity(speak)
+            target=hygrometer.read_humidity,
+            args=(speak,)
         )
         process_dict['hygrometer_read_humidity'] = new_process
         new_process.start()
@@ -208,16 +227,29 @@ def handle_voice_command(user_input):
             print("Setting Up Alarm...")
             stop_processes(stoppable_processes)
             try:
+                # Parse input details
                 details = set_alarm_command.split(",")
+
+                # Check if all required fields are provided
+                if len(details) < 3:
+                    raise ValueError("Incomplete input. Please specify the alarm details in the format: alarm name, alarm time with number for the hour and one for minutes, and the frequency as in daily, weekly, monthly, or by naming a weekday.")
+
                 name = details[0].strip()
                 alarm_time = details[1].strip()
                 frequency = details[2].strip()
 
+                # Start a new process to set the alarm
                 new_process = multiprocessing.Process(
-                    target=alarm_clock.set_alarm(name, alarm_time, frequency, speak)
+                    target=alarm_clock.set_alarm, args=(name, alarm_time, frequency, speak)
                 )
                 process_dict['set_alarm'] = new_process
                 new_process.start()
+
+            except ValueError as ve:
+                speak(str(ve))
+            except Exception as e:
+                speak("An unexpected error occurred while setting the alarm.")
+                print(f"Error: {e}")
         speak("Please provide the alarm name, time, and frequency in the format: 'name, HH:MM, frequency'.")
         return
 
@@ -228,7 +260,8 @@ def handle_voice_command(user_input):
         alarm_name = delete_alarm_command.strip()
 
         new_process = multiprocessing.Process(
-            target=alarm_clock.delete_alarm(alarm_name, speak)
+            target=alarm_clock.delete_alarm,
+            args=(alarm_name, speak)
         )
         process_dict['delete_alarm'] = new_process
         new_process.start()
@@ -242,8 +275,19 @@ def handle_voice_command(user_input):
         return
 
     # Default: Send query to OpenAI
-    response = ask_openai(user_input)
-    speak(response)
+    stop_processes(stoppable_processes)
+
+    result_queue = multiprocessing.Queue()
+    new_process = multiprocessing.Process(
+        target=ask_openai_worker,
+        args=(user_input, result_queue),
+    )
+    process_dict['ask_openai'] = new_process
+    new_process.start()
+
+    response = result_queue.get()
+    new_process.join()
+    speak_async(response)
 
 # Main function
 def voice_assistant():

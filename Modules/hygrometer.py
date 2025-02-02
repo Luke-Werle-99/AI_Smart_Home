@@ -7,7 +7,6 @@ import pygame
 def speak(text):
     print(f"Hygrometer: {text}")
 
-
 async def decode_govee_data():
     target_mac = "A4:C1:38:0F:9D:63"  # Replace with your Govee H5075 MAC address
 

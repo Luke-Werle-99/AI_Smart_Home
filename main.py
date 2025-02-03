@@ -7,7 +7,7 @@ import pygame
 import os
 from dotenv import load_dotenv
 import traceback
-from Modules import music_player, diary, hygrometer, alarm_clock
+from Modules import music_player, diary, hygrometer, alarm_clock, light_control
 
 # Redirect stderr to suppress ALSA and JACK errors
 #sys.stderr = open(os.devnull, 'w')
@@ -266,6 +266,59 @@ def handle_voice_command(user_input):
         process_dict['delete_alarm'] = new_process
         new_process.start()
 
+        return
+
+    set_light_bool, light_command = detect_command(user_input, "set light")
+    if set_light_bool:
+        print("Light control command detected.")
+        stop_processes(stoppable_processes)
+        # Process additional keywords; convert to lowercase and remove the word "brightness"
+        params = light_command.lower().replace("brightness", "")
+
+        # If the user explicitly says "on" or "off"
+        if "on" in params:
+            light_control.turn_on()
+        elif "off" in params:
+            light_control.turn_off()
+        else:
+            # Expanded mapping for common colors
+            color_map = {
+                "red": {"h": 0, "s": 1000},
+                "green": {"h": 120, "s": 1000},
+                "blue": {"h": 240, "s": 1000},
+                "yellow": {"h": 60, "s": 1000},
+                "purple": {"h": 270, "s": 1000},
+                "pink": {"h": 330, "s": 1000},
+                "white": {"h": 0, "s": 0},  # White: saturation 0
+                "orange": {"h": 30, "s": 1000},
+                "cyan": {"h": 180, "s": 1000},
+                "magenta": {"h": 300, "s": 1000}
+            }
+            selected_color = None
+            for color in color_map:
+                if color in params:
+                    selected_color = color
+                    break
+            # Look for a brightness percentage, e.g. "50 percent" or "50%"
+            import re
+            brightness_match = re.search(r'(\d+)\s*(?:percent|%)', params)
+            brightness_value = None
+            if brightness_match:
+                percent = int(brightness_match.group(1))
+                brightness_value = int(percent / 100 * 1000)
+            if selected_color:
+                # If a color is specified, use that color mapping.
+                hue = color_map[selected_color]["h"]
+                saturation = color_map[selected_color]["s"]
+                if brightness_value is None:
+                    brightness_value = 1000  # Default full brightness
+                light_control.set_color(hue=hue, saturation=saturation, brightness=brightness_value)
+            elif brightness_value is not None:
+                # If only brightness is specified, adjust brightness while preserving the current color.
+                light_control.adjust_brightness(brightness=brightness_value)
+            else:
+                speak(
+                    "I didn't understand the light command. Please say a color (red, blue, etc.) or specify a brightness percentage.")
         return
 
     stop_bool, stop_command = detect_command(user_input, "stop")

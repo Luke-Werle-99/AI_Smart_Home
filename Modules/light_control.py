@@ -1,5 +1,6 @@
-#This Module can be used to control any tuya compatible smart light
 import tinytuya
+
+#This Module can be used to control any tuya compatible smart light
 
 # Tuya Cloud Credentials (from your configuration)
 DEVICE_ID = "bf429e6c5b54bd43f3xpzz"  # Your device ID

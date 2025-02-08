@@ -1,11 +1,7 @@
 from bleak import BleakScanner
 import asyncio
-import pygame
 
-# Hygrometer module to read temperature and humidity from the Govee H5075
-
-def speak(text):
-    print(f"Hygrometer: {text}")
+# This Hygrometer module can be used to read temperature and humidity from any bluetooth enabled govee hygrometer
 
 async def decode_govee_data():
     target_mac = "A4:C1:38:0F:9D:63"  # Replace with your Govee H5075 MAC address
@@ -34,16 +30,17 @@ async def decode_govee_data():
         print(f"Temperature: {temperature:.2f}°C, Humidity: {humidity:.2f}%, Battery: {battery}%")
         return temperature, humidity, battery
 
-    result = {"temperature": None, "humidity": None}
+    result = {"temperature": None, "humidity": None, "battery": None}
 
     def detection_callback(device, advertisement_data):
         if device.address == target_mac:
             for key, raw_data in advertisement_data.manufacturer_data.items():
                 if key == 60552:  # Manufacturer data key for Govee devices
-                    temperature, humidity, _ = parse_govee_data(raw_data)
-                    if temperature is not None and humidity is not None:
+                    temperature, humidity, battery = parse_govee_data(raw_data)
+                    if temperature is not None and humidity is not None and battery is not None:
                         result["temperature"] = temperature
                         result["humidity"] = humidity
+                        result["battery"] = battery
 
                         return  # Stop after retrieving the desired data
 
@@ -53,9 +50,7 @@ async def decode_govee_data():
         await asyncio.sleep(5)  # Scan for 5 seconds
     finally:
         await scanner.stop()
-
     return result
-
 
 def read_temperature(speak):
     """Fetch and speak the temperature."""
@@ -67,7 +62,6 @@ def read_temperature(speak):
     else:
         speak("Unable to fetch the temperature.")
 
-
 def read_humidity(speak):
     """Fetch and speak the humidity."""
     loop = asyncio.get_event_loop()
@@ -77,3 +71,13 @@ def read_humidity(speak):
         speak(f"The current humidity is {humidity:.2f} percent.")
     else:
         speak("Unable to fetch the humidity.")
+
+def read_battery(speak):
+    """Fetch and speak the humidity."""
+    loop = asyncio.get_event_loop()
+    result = loop.run_until_complete(decode_govee_data())
+    battery = result.get("battery")
+    if battery is not None:
+        speak(f"The current battery percentage is {battery} percent.")
+    else:
+        speak("Unable to fetch the battery percentage.")

@@ -38,7 +38,6 @@ def play_song(query, stop_flag):
                     preexec_fn=os.setsid  # This makes mpv the leader of a new process group.
                 )
 
-                # Check more frequently.
                 while sp.poll() is None and not stop_flag.value:
                     time.sleep(0.1)
 
@@ -46,7 +45,7 @@ def play_song(query, stop_flag):
                     print("Stop flag detected. Terminating mpv process group.")
                     os.killpg(os.getpgid(sp.pid), signal.SIGTERM)
                     # Optionally, force kill if needed:
-                    time.sleep(0.2)
+                    time.sleep(0.5)
                     if sp.poll() is None:
                         os.killpg(os.getpgid(sp.pid), signal.SIGKILL)
                 else:

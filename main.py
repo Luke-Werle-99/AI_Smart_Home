@@ -2,21 +2,18 @@ import time, subprocess, wave, os, re, sounddevice, warnings, threading
 import speech_recognition as sr
 from openai import OpenAI
 import multiprocessing
+import threading
 from gtts import gTTS
 import pygame
 import os
 from dotenv import load_dotenv
 import traceback
-from Modules import music_player, diary, hygrometer, alarm_clock, light_control
+from Modules import music_player, diary, hygrometer, alarm_clock, light_control, web_console
+web_console.start_web_console()
 
-# Redirect stderr to suppress ALSA and JACK errors
-#sys.stderr = open(os.devnull, 'w')
-#warnings.filterwarnings("ignore")  # Suppress other warnings
-
-# Suppress ALSA and PulseAudio warnings
-os.environ["SDL_AUDIODRIVER"] = "pulse"  # Use ALSA driver explicitly
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"  # Suppress pygame startup message
-os.environ["ALSA_LOG_LEVEL"] = "none"  # Suppress ALSA messages
+#Configuration
+WAKE_WORD = "assistant"
+USER_NAME = "Luke"
 
 #Load the environment variables from the .env file
 load_dotenv()
@@ -34,9 +31,6 @@ client = OpenAI(
 #initializing thread dictionary
 process_dict = {}
 
-# Wake word
-WAKE_WORD = "assistant"
-
 stoppable_processes = {
     "play_music",
     "diary_read_entry",
@@ -47,6 +41,15 @@ stoppable_processes = {
 
 }
 stop_flag = multiprocessing.Value("b", False)
+
+# Redirect stderr to suppress ALSA and JACK errors
+#sys.stderr = open(os.devnull, 'w')
+#warnings.filterwarnings("ignore")  # Suppress other warnings
+
+# Suppress ALSA and PulseAudio warnings
+os.environ["SDL_AUDIODRIVER"] = "pulse"  # Use ALSA driver explicitly
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"  # Suppress pygame startup message
+os.environ["ALSA_LOG_LEVEL"] = "none"  # Suppress ALSA messages
 
 #Optimize the speech_recognition Library Settings
 #sr.energy_threshold = 50  # Default is around 300; increase for noisy environments
@@ -63,8 +66,6 @@ def speak(text):
     tts = gTTS(text=text, lang="en")
     audio_file = "output.mp3"
     tts.save(audio_file)
-
-    #subprocess.run(['mpv', '--no-video', audio_file])
 
     #Play the audio using pygame
     pygame.mixer.music.load(audio_file)
@@ -138,7 +139,7 @@ def ask_openai(prompt):
 def ask_openai_worker(prompt, output_queue):
     response = ask_openai(prompt)
     output_queue.put(response)
-
+'''
 def stop_processes(process_names):
     stop_flag.value = True  # Signal all tasks (including audio) to stop
     for process_name in process_names:
@@ -150,6 +151,29 @@ def stop_processes(process_names):
     # Only reset the flag if no audio is playing.
     if not pygame.mixer.music.get_busy():
         stop_flag.value = False
+'''
+
+def stop_processes(process_names):
+    stop_flag.value = True  # Signal all tasks to stop
+
+    for process_name in process_names:
+        existing_process = process_dict.get(process_name)
+
+        if existing_process:
+            if isinstance(existing_process, multiprocessing.Process):
+                if existing_process.is_alive():
+                    print(f"Stopping process: {process_name}")
+                    existing_process.terminate()
+                    existing_process.join()
+            elif isinstance(existing_process, threading.Thread):
+                if existing_process.is_alive():
+                    print(f"Stopping thread: {process_name}")
+                    existing_process.join(timeout=1)  # Give it time to stop
+            else:
+                print(f"Unknown process type for {process_name}, cannot stop.")
+
+    stop_flag.value = False  # Reset for future use
+
 
 def handle_voice_command(user_input):
     # Handle voice commands by routing it to the appropriate module.
@@ -169,17 +193,19 @@ def handle_voice_command(user_input):
             speak("Please specify the song you'd like to play.")
         return
 
-    diary_entry_bool, diary_command = detect_command(user_input, "diary")
+    diary_entry_bool, diary_command = detect_command(user_input, "create diary")
     if diary_entry_bool:
         print("Diary entry command detected. Starting a new diary entry...")
         stop_processes(stoppable_processes)
 
-        new_process = multiprocessing.Process(
+        # Start a new thread for diary entry
+        diary_thread = threading.Thread(
             target=diary.create_entry,
-            args=(speak,)
+            args=(speak, listen, stop_flag),  # Pass `speak` and `stop_flag`
+            daemon=True
         )
-        process_dict['diary_create_entry'] = new_process
-        new_process.start()
+        process_dict['diary_create_entry'] = diary_thread
+        diary_thread.start()
         return
 
     read_diary_bool, read_diary_command = detect_command(user_input, "read diary")
@@ -187,12 +213,14 @@ def handle_voice_command(user_input):
         print("Read diary entry command detected. Fetching the diary entry...")
         stop_processes(stoppable_processes)
 
-        new_process = multiprocessing.Process(
+        # Start a new thread for reading diary
+        diary_thread = threading.Thread(
             target=diary.read_entry,
-            args=(speak,)
+            args=(speak, listen, stop_flag),  # Pass `speak` and `stop_flag`
+            daemon=True
         )
-        process_dict['diary_read_entry'] = new_process
-        new_process.start()
+        process_dict['diary_read_entry'] = diary_thread
+        diary_thread.start()
         return
 
     read_temperature_bool, read_temperature_command = detect_command(user_input, "temperature")
@@ -218,6 +246,19 @@ def handle_voice_command(user_input):
             args=(speak,)
         )
         process_dict['hygrometer_read_humidity'] = new_process
+        new_process.start()
+        return
+
+    read_battery_bool, read_battery_command = detect_command(user_input, "battery")
+    if read_humidity_bool:
+        print("Read battery command detected. Fetching the battery percentage...")
+        stop_processes(stoppable_processes)
+
+        new_process = multiprocessing.Process(
+            target=hygrometer.read_battery,
+            args=(speak,)
+        )
+        process_dict['hygrometer_read_battery'] = new_process
         new_process.start()
         return
 
@@ -300,7 +341,6 @@ def handle_voice_command(user_input):
                     selected_color = color
                     break
             # Look for a brightness percentage, e.g. "50 percent" or "50%"
-            import re
             brightness_match = re.search(r'(\d+)\s*(?:percent|%)', params)
             brightness_value = None
             if brightness_match:
@@ -344,7 +384,7 @@ def handle_voice_command(user_input):
 
 # Main function
 def voice_assistant():
-    speak(f"Hello Luke. I am your voice assistant. Say {WAKE_WORD} to wake me up.")
+    #speak(f"Hello {USER_NAME}. I am your voice assistant. Say {WAKE_WORD} to wake me up.")
     while True:
         audio_input = listen()
         detected, command = detect_command(audio_input, WAKE_WORD)

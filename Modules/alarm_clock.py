@@ -4,6 +4,7 @@ import threading
 import pygame
 import os
 
+# This alarm clock  module can be used to set up regular alarms with custom names as a reminder and to delete them
 pygame.mixer.init()
 alarms = {}
 
@@ -118,7 +119,6 @@ def setup_alarm(speak, listen, stop_flag):
         else:
             speak("Invalid frequency.")
 
-    # Now that we have valid inputs, call set_alarm.
     set_alarm(name, alarm_time, frequency, speak)
 
 def run_scheduler():

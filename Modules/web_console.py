@@ -44,7 +44,7 @@ template = """
   <pre>{{ logs }}</pre>
   <script>
     // Auto-refresh every 3 seconds.
-    setTimeout(function(){ window.location.reload(); }, 300000);
+    setTimeout(function(){ window.location.reload(); }, 10000);
   </script>
 </body>
 </html>

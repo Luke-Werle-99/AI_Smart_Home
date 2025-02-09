@@ -136,27 +136,13 @@ def ask_openai(prompt):
         traceback.print_exc()
         return "Error when asking OpenAI."
 
-
 # This function used to mitigate having to call speak in the subprocess
 def ask_openai_worker(prompt, output_queue):
     response = ask_openai(prompt)
     output_queue.put(response)
-'''
-def stop_processes(process_names):
-    stop_flag.value = True  # Signal all tasks (including audio) to stop
-    for process_name in process_names:
-        existing_process = process_dict.get(process_name)
-        if existing_process and existing_process.is_alive():
-            print(f"Stopping process: {process_name}")
-            existing_process.terminate()
-            existing_process.join()
-    # Only reset the flag if no audio is playing.
-    if not pygame.mixer.music.get_busy():
-        stop_flag.value = False
-'''
 
 def stop_processes(process_names):
-    stop_flag.value = True  # Signal all tasks to stop
+    stop_flag.value = True
 
     for process_name in process_names:
         existing_process = process_dict.get(process_name)
@@ -170,7 +156,7 @@ def stop_processes(process_names):
             elif isinstance(existing_process, threading.Thread):
                 if existing_process.is_alive():
                     print(f"Stopping thread: {process_name}")
-                    existing_process.join(timeout=1)  # Give it time to stop
+                    existing_process.join(timeout=1)
             else:
                 print(f"Unknown process type for {process_name}, cannot stop.")
 
@@ -230,12 +216,25 @@ def handle_voice_command(user_input):
         print("Read temperature command detected. Fetching temperature...")
         stop_processes(stoppable_processes)
 
-        new_process = multiprocessing.Process(
+        new_thread = threading.Thread(
             target=hygrometer.read_temperature,
             args=(speak,)
         )
-        process_dict['hygrometer_read_temperature'] = new_process
-        new_process.start()
+        process_dict['hygrometer_read_temperature'] = new_thread
+        new_thread.start()
+        return
+
+    read_temperature_bool, read_temperature_command = detect_command(user_input, "temperature")
+    if read_temperature_bool:
+        print("Read temperature command detected. Fetching temperature...")
+        stop_processes(stoppable_processes)
+
+        new_thread = threading.Thread(
+            target=hygrometer.read_temperature,
+            args=(speak,)
+        )
+        process_dict['hygrometer_read_temperature'] = new_thread
+        new_thread.start()
         return
 
     read_humidity_bool, read_humidity_command = detect_command(user_input, "humidity")
@@ -243,25 +242,12 @@ def handle_voice_command(user_input):
         print("Read humidity command detected. Fetching the humidity...")
         stop_processes(stoppable_processes)
 
-        new_process = multiprocessing.Process(
+        new_thread = threading.Thread(
             target=hygrometer.read_humidity,
             args=(speak,)
         )
-        process_dict['hygrometer_read_humidity'] = new_process
-        new_process.start()
-        return
-
-    read_battery_bool, read_battery_command = detect_command(user_input, "battery")
-    if read_humidity_bool:
-        print("Read battery command detected. Fetching the battery percentage...")
-        stop_processes(stoppable_processes)
-
-        new_process = multiprocessing.Process(
-            target=hygrometer.read_battery,
-            args=(speak,)
-        )
-        process_dict['hygrometer_read_battery'] = new_process
-        new_process.start()
+        process_dict['hygrometer_read_humidity'] = new_thread
+        new_thread.start()
         return
 
     set_alarm_bool, _ = detect_command(user_input, "set alarm")

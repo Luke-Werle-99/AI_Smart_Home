@@ -1,6 +1,8 @@
 from bleak import BleakScanner
 import asyncio
+import pygame
 
+pygame.mixer.init()
 # This Hygrometer module can be used to read temperature and humidity from any bluetooth enabled govee hygrometer
 
 async def decode_govee_data():
@@ -27,7 +29,7 @@ async def decode_govee_data():
 
         # Extract battery level (Byte 4)
         battery = data[4]
-        print(f"Temperature: {temperature:.2f}°C, Humidity: {humidity:.2f}%, Battery: {battery}%")
+        #print(f"Temperature: {temperature:.2f}°C, Humidity: {humidity:.2f}%, Battery: {battery}%")
         return temperature, humidity, battery
 
     result = {"temperature": None, "humidity": None, "battery": None}
@@ -54,8 +56,7 @@ async def decode_govee_data():
 
 def read_temperature(speak):
     """Fetch and speak the temperature."""
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(decode_govee_data())
+    result = asyncio.run(decode_govee_data())
     temperature = result.get("temperature")
     if temperature is not None:
         speak(f"The current temperature is {temperature:.2f}°C.")
@@ -64,8 +65,7 @@ def read_temperature(speak):
 
 def read_humidity(speak):
     """Fetch and speak the humidity."""
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(decode_govee_data())
+    result = asyncio.run(decode_govee_data())
     humidity = result.get("humidity")
     if humidity is not None:
         speak(f"The current humidity is {humidity:.2f} percent.")
@@ -73,11 +73,11 @@ def read_humidity(speak):
         speak("Unable to fetch the humidity.")
 
 def read_battery(speak):
-    """Fetch and speak the humidity."""
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(decode_govee_data())
+    """Fetch and speak the battery percentage."""
+    result = asyncio.run(decode_govee_data())
     battery = result.get("battery")
     if battery is not None:
         speak(f"The current battery percentage is {battery} percent.")
     else:
         speak("Unable to fetch the battery percentage.")
+

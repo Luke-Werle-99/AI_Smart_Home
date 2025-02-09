@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import traceback
 from Modules import music_player, diary, hygrometer, alarm_clock, light_control, web_console
 web_console.start_web_console()
+#multiprocessing.set_start_method("spawn", force=True)
 
 #Configuration
 WAKE_WORD = "assistant"
@@ -38,6 +39,7 @@ stoppable_processes = {
     "hygrometer_read_humidity",
     "hygrometer_read_temperature",
     "ask_openai",
+    "alarm_clock",
 
 }
 stop_flag = multiprocessing.Value("b", False)
@@ -262,37 +264,20 @@ def handle_voice_command(user_input):
         new_process.start()
         return
 
-    set_alarm_bool, set_alarm_command = detect_command(user_input, "set alarm")
+    set_alarm_bool, _ = detect_command(user_input, "set alarm")
     if set_alarm_bool:
-        if set_alarm_command:
-            print("Setting Up Alarm...")
-            stop_processes(stoppable_processes)
-            try:
-                # Parse input details
-                details = set_alarm_command.split(",")
-
-                # Check if all required fields are provided
-                if len(details) < 3:
-                    raise ValueError("Incomplete input. Please specify the alarm details in the format: alarm name, alarm time with number for the hour and one for minutes, and the frequency as in daily, weekly, monthly, or by naming a weekday.")
-
-                name = details[0].strip()
-                alarm_time = details[1].strip()
-                frequency = details[2].strip()
-
-                # Start a new process to set the alarm
-                new_process = multiprocessing.Process(
-                    target=alarm_clock.set_alarm, args=(name, alarm_time, frequency, speak)
-                )
-                process_dict['set_alarm'] = new_process
-                new_process.start()
-
-            except ValueError as ve:
-                speak(str(ve))
-            except Exception as e:
-                speak("An unexpected error occurred while setting the alarm.")
-                print(f"Error: {e}")
-        speak("Please provide the alarm name, time, and frequency in the format: 'name, HH:MM, frequency'.")
+        print("Setting Up Alarm...")
+        stop_processes(stoppable_processes)
+        # Instead of spawning a new process, start the setup_alarm function in a thread.
+        alarm_thread = threading.Thread(
+            target=alarm_clock.setup_alarm,
+            args=(speak, listen, stop_flag),
+            daemon=True
+        )
+        process_dict['set_alarm'] = alarm_thread
+        alarm_thread.start()
         return
+
 
     delete_alarm_bool, delete_alarm_command = detect_command(user_input, "delete alarm")
     if delete_alarm_bool:

@@ -198,19 +198,6 @@ To run the assistant on system startup:
 
 ## File Structure
 ```
-ai-smart-home/
-├── main.py
-├── Modules/
-│   ├── __innit__.py
-│   ├── music_player.py
-│   ├── diary.py
-│   ├── hygrometer.py
-├── diary_entries/
-│   ├── 2023-12-17.txt
-│   ├── 2023-12-17.wav
-├── .env
-└── README.md
-
 AI_Smart_Home/
 ├── main.py
 ├── Modules/

@@ -220,8 +220,6 @@ AI_Smart_Home/
 
 ## Troubleshooting
 
-## Troubleshooting
-
 - **Audio Playback:**  
   - Ensure `pygame` is properly initialized.
   - If you encounter issues in subprocesses, consider using threads instead of processes to share the Pygame mixer context.
